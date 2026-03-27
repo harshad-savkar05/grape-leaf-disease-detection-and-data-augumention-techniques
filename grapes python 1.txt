@@ -1,0 +1,414 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function 
+from tensorflow.keras.models import load_model
+from tkinter import Tk, filedialog
+
+from datetime import datetime
+from packaging import version
+
+from tensorflow.keras.models import save_model
+from tensorflow.keras.models import Model
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow.keras import Sequential
+from tensorflow.keras.layers import Flatten, Activation
+from tensorflow.keras.utils import to_categorical
+
+
+import matplotlib.pyplot as plt
+import os
+import cv2
+import numpy as np
+import pickle
+import random
+import matplotlib.pyplot as plt
+import tensorflow as tf
+import tensorflow.keras.backend as K
+
+
+# Function to upload an image
+def upload_image():
+    """
+    Opens a file dialog for the user to select an image file.
+    Returns the selected file path.
+    """
+    root = Tk()
+    root.withdraw()  # Hide the root window
+    file_path = filedialog.askopenfilename(filetypes=[("Image Files", "*.jpg *.jpeg *.png")])
+    return file_path
+
+# Function to preprocess and predict the uploaded image
+def predict_uploaded_image(model, image_path, categories):
+    """
+    Preprocess the uploaded image and make predictions using the trained model.
+    Displays the image along with the predicted class and confidence score.
+    """
+    try:
+        # Load the image
+        img = cv2.imread(image_path)
+        if img is None:
+            print("Error: Unable to load the image. Please select a valid image file.")
+            return
+        
+        # Resize the image to match the model input shape
+        img_resized = cv2.resize(img, (256, 256))
+        img_normalized = img_resized / 255.0  # Normalize the image
+        img_array = np.expand_dims(img_normalized, axis=0)  # Add batch dimension
+
+        # Predict the class
+        predictions = model.predict(img_array)
+        predicted_class_index = np.argmax(predictions, axis=1)[0]
+        confidence_score = predictions[0][predicted_class_index]
+
+        # Display the results
+        plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+        plt.axis('off')
+        plt.title(f"Predicted: {categories[predicted_class_index]} \nConfidence: {confidence_score * 100:.2f}%")
+        plt.show()
+    except Exception as e:
+        print(f"Error during prediction: {e}")
+
+# Main function to execute the script
+def main():
+    """
+    Main function to load the model, handle image upload, and predict the class.
+    """
+    # Path to the saved model
+    model_path = r'C:\Users\harsh\Desktop\GRAPES GREY AVERAGE\leaf_disease_coloured.h5'
+    
+    # Categories of the classes
+    categories = ["Black_rot", "Esca_(Black_Measles)", "Healthy", "Leaf_blight_(Isariopsis_Leaf_Spot)"]
+
+    # Load the trained model
+    print("Loading the trained model...")
+    model = load_model(model_path)
+    print("Model loaded successfully.")
+
+    # Upload an image
+    print("Please select an image to upload.")
+    image_path = upload_image()
+    if image_path:
+        print(f"Selected image: {image_path}")
+        predict_uploaded_image(model, image_path, categories)
+    else:
+        print("No image selected.")
+
+# Run the script
+if __name__ == "__main__":
+    main()
+
+
+# In[1]:
+
+
+
+#change to the path of the training dataset
+dirtrain= r'C:\Users\harsh\Desktop\GRAPES GREY AVERAGE\Grapes Leaves Dataset (images)\train'
+
+
+# In[6]:
+
+#change to the path of the training dataset
+dirtest= r'C:\Users\harsh\Desktop\GRAPES GREY AVERAGE\Grapes Leaves Dataset (images)\test'
+
+
+# In[7]:
+
+#variable that has the name of the diseases in oerder of the class
+categories=["Black_rot","Esca_(Black_Measles)","Healthy","Leaf_blight_(Isariopsis_Leaf_Spot)"]
+
+
+# In[8]:
+
+# just to display an image
+
+for c in categories:
+    path=os.path.join(dirtrain,c)
+    for i in os.listdir(path):
+        img_array=cv2.imread(os.path.join(path,i))
+        #print(img_array.shape)
+        plt.imshow(img_array)
+        plt.show()
+        break
+    break
+
+
+# In[9]:
+
+
+training_data = []
+def create_training_data():
+    count=[]
+    for c in categories:
+        path=os.path.join(dirtrain,c)#creating the path of each class (folder)
+        class_num=categories.index(c)#label is equal to the position of the class in 'categories' variable
+        c=0
+        for i in os.listdir(path):
+            c=c+1
+            try:
+                img_array=cv2.imread(os.path.join(path,i))#creating the path of each image
+                training_data.append([img_array,class_num])
+            except Exception as e:
+                pass
+        count.append(c)
+    return count
+
+count_train=create_training_data() #function called to extract images from the training folder
+
+# In[10]:
+
+
+testing_data = []
+def create_testing_data():
+    count=[]
+    for c in categories:
+        path=os.path.join(dirtest,c)
+        class_num=categories.index(c)
+        c=0
+        for i in os.listdir(path):
+            c=c+1
+            try:
+                img_array=cv2.imread(os.path.join(path,i))
+                #img_array=cv2.resize(img_array,(128,128))
+                testing_data.append([img_array,class_num])
+            except Exception as e:
+                pass
+        count.append(c)
+    return count
+
+count_test=create_testing_data() #function called to extract images from the testing folder
+
+
+# In[11]:
+
+"""
+print(len(training_data))
+print(count_train)
+print(len(testing_data))
+print(count_test)
+"""
+
+# In[12]:
+
+#shuffling the dataset to avoid successive training on same class of images
+random.shuffle(training_data)
+random.shuffle(testing_data)
+
+
+# In[13]:
+
+
+x_train = []
+y_train = []
+x_test = []
+y_test = []
+
+
+# In[14]:
+
+#separating the images and label for the model
+for features, label in training_data:
+    x_train.append(features)
+    y_train.append(label)
+x_train=np.array(x_train).reshape(-1,256,256,3)
+#reshaping -1 means that the it can be any value i.e. the original value which is the no. of images
+#256x256 for the dimension of the image and 3 for the the layers Red Green and Blue (RGB)
+
+# In[15]:
+
+#displaying an image
+x=cv2.resize(training_data[0][0],(256,256))
+plt.imshow(x,cmap='gray')
+
+
+# In[16]:
+
+#separating the images and label for evaluation
+
+for features, label in testing_data:
+    x_test.append(features)
+    y_test.append(label)
+x_test=np.array(x_test).reshape(-1,256,256,3)
+
+
+# In[17]:
+
+#saving the constructed training dataset using pickle
+
+def save_training_data(x_train,y_train):
+    pickle_out=open("x_train_coloured.pickle","wb")
+    pickle.dump(x_train,pickle_out)
+    pickle_out.close()
+
+    pickle_out=open("y_train_coloured.pickle","wb")
+    pickle.dump(y_train,pickle_out)
+    pickle_out.close
+save_training_data(x_train,y_train)
+
+
+# In[18]:
+
+#saving the constructed testing dataset using pickle
+
+def save_testing_data(x_test,y_test):
+    pickle_out=open("x_test_coloured.pickle","wb")
+    pickle.dump(x_test,pickle_out)
+    pickle_out.close()
+
+    pickle_out=open("y_test_coloured.pickle","wb")
+    pickle.dump(y_test,pickle_out)
+    pickle_out.close()
+save_testing_data(x_test,y_test)
+
+
+# In[19]:
+
+#example of loading data from picle file
+
+def load_data():
+    pickle_in=open("x_train_coloured.pickle","rb")
+    x_train=pickle.load(pickle_in)
+    return x_train
+#once the pickle files are ready no need to process the images form folder again and again
+
+
+# In[21]:
+
+#creating the neural network model
+    
+K.clear_session()
+model=Sequential() 
+model.add(layers.Conv2D(32,(3,3),padding='same',input_shape=(256,256,3),activation='relu'))
+model.add(layers.Conv2D(32,(3,3),activation='relu'))
+
+
+model.add(layers.MaxPool2D(pool_size=(8,8)))
+
+model.add(layers.Conv2D(32,(3,3),padding='same',activation='relu'))
+model.add(layers.Conv2D(32,(3,3),activation='relu'))
+
+model.add(layers.MaxPool2D(pool_size=(8,8)))
+
+model.add(Activation('relu'))
+
+model.add(Flatten())
+model.add(layers.Dense(256,activation='relu'))
+model.add(layers.Dense(4,activation='softmax'))
+
+model.compile(loss='categorical_crossentropy',optimizer='rmsprop',metrics=['accuracy'])
+
+
+# In[22]:
+
+#compiling the network using the following loss and optimizer
+model.summary()
+
+
+# In[23]:
+
+#converting the training label to categorical
+y_train_cat=to_categorical(y_train,4) #4 in the no. of categories
+
+
+# In[24]:
+
+#converting the training label to categorical
+
+y_test_cat=to_categorical(y_test,4)
+
+
+# In[25]:
+
+#fit the model i.e. training the model and batch size can be varies
+model.fit(x_train,y_train_cat,batch_size=32,
+          epochs=10,verbose=1,validation_split=0.15,shuffle=True)
+#validating the model with 15% data after every epoch which is also shuffled after each epoch
+
+
+# In[26]:
+
+#saving the trained model so that no need to fit again for next time
+model.save( r"leaf_disease_coloured.h5")
+model.save( r'leaf_disease_coloured.keras')
+
+model.save( r'C:\Users\harsh\Desktop\GRAPES GREY AVERAGE\model.keras')
+model = load_model('model.keras')
+# keras.saving.save_model(model, 'model.keras') 
+
+model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+model.save( r'C:\Users\harsh\Desktop\GRAPES GREY AVERAGE\Coloured Model\leaf_disease_coloured.h5')
+
+
+
+new_model = tf.keras.models.load_model(r'C:\Users\harsh\Desktop\GRAPES GREY AVERAGE\leaf_disease_coloured.h5')
+
+
+#evaluating the saved model
+loss, acc = new_model.evaluate(x_test,y_test_cat, verbose=2)
+print('Restored model, accuracy: {:5.2f}%'.format(100*acc))
+
+
+# In[29]:
+
+
+'''from tensorflow.python.client import device_lib
+print(device_lib.list_local_devices())'''
+
+
+# In[30]:
+
+#predicting a image using the model
+
+#'d' is the path of the image
+d= r'C:\Users\harsh\Desktop\GRAPES GREY AVERAGE\Grapes Leaves Dataset (images)\train\Healthy\0c1667a2-61d7-4dee-b4d9-0d141a1ceb20___Mt.N.V_HL 9127_final_masked.jpg'
+img=cv2.imread(d)
+#uncomment the below line if the image is not 256x256 by default
+#img_array=cv2.resize(img_array,(256,256)) 
+plt.imshow(img)
+
+
+# In[31]:
+
+#reshaping the image to make it compatible for the argument of predict function
+img=img.reshape(-1,256,256,3)
+
+
+# In[32]:
+
+# #predicting the class of the image
+# predict_class=new_model.predict_classes(img)
+
+# Predict probabilities for each class
+predictions = new_model.predict(img)
+
+# Get the index of the class with the highest probability
+predict_class = np.argmax(predictions, axis=1)
+
+print(f"Predicted Class: {predict_class}")
+
+# # In[33]:
+
+# #will print a no. of the class to which the leaf belongs
+# print(predict_class)
+
+
+# In[34]:
+
+#using the predict class as the index for categories defined at the beginning to display the name
+categories[predict_class[0]]
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
+

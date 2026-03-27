@@ -1,0 +1,190 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+from tensorflow.keras.models import Sequential, load_model
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.callbacks import Callback
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+import cv2
+import random
+from tkinter import Tk, filedialog
+
+
+# Function to upload an image
+def upload_image():
+    """
+    Opens a file dialog for the user to select an image file.
+    Returns the selected file path.
+    """
+    root = Tk()
+    root.withdraw()  # Hide the root window
+    file_path = filedialog.askopenfilename(filetypes=[("Image Files", "*.jpg *.jpeg *.png")])
+    return file_path
+
+
+# Custom Callback to log epoch output
+class EpochLogger(Callback):
+    def on_epoch_end(self, epoch, logs=None):
+        print(f"Epoch {epoch + 1}: Loss = {logs['loss']:.4f}, Accuracy = {logs['accuracy']:.4f}, "
+              f"Validation Loss = {logs['val_loss']:.4f}, Validation Accuracy = {logs['val_accuracy']:.4f}")
+
+
+# Function to create the model
+def create_model():
+    """
+    Creates a CNN model for classification.
+    Returns the compiled model.
+    """
+    model = Sequential()
+    model.add(Conv2D(32, (3, 3), activation='relu', input_shape=(256, 256, 3)))
+    model.add(MaxPooling2D((2, 2)))
+    model.add(Conv2D(64, (3, 3), activation='relu'))
+    model.add(MaxPooling2D((2, 2)))
+    model.add(Conv2D(128, (3, 3), activation='relu'))
+    model.add(Flatten())
+    model.add(Dense(256, activation='relu'))
+    model.add(Dense(4, activation='softmax'))  # 4 classes
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    return model
+
+
+# Function to preprocess and predict the uploaded image
+def predict_uploaded_image(model, image_path, categories, top_n=4):
+    """
+    Preprocess the uploaded image and make predictions using the trained model.
+    Displays the image along with detailed output including top-N predictions,
+    probability chart, and explanation.
+    """
+    try:
+        # Load the image
+        img = cv2.imread(image_path)
+        if img is None:
+            print("Error: Unable to load the image. Please select a valid image file.")
+            return
+        
+        # Resize and normalize the image
+        img_resized = cv2.resize(img, (256, 256))
+        img_normalized = img_resized / 255.0  # Normalize pixel values
+        img_array = np.expand_dims(img_normalized, axis=0)  # Add batch dimension
+
+        # Predict probabilities for each class
+        predictions = model.predict(img_array)[0]
+
+        # Sort predictions for top-N results
+        top_indices = np.argsort(predictions)[::-1]  # Sort in descending order
+        top_predictions = [(categories[i], predictions[i] * 100) for i in top_indices[:top_n]]
+
+        # Display prediction results
+        print("\nPrediction Summary:")
+        for rank, (category, confidence) in enumerate(top_predictions, start=1):
+            print(f"{rank}. {category}: {confidence:.2f}%")
+
+        # Show all class probabilities as a bar chart
+        plt.figure(figsize=(10, 6))
+        plt.bar(categories, predictions * 100, color='skyblue')
+        plt.xlabel('Classes', fontsize=14)
+        plt.ylabel('Confidence (%)', fontsize=14)
+        plt.title('Class Probability Distribution', fontsize=16)
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.show()
+
+        # Display the image with predictions
+        plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+        plt.axis('off')
+        title_text = "\n".join([f"{rank}. {category}: {confidence:.2f}%" for rank, (category, confidence) in enumerate(top_predictions, start=1)])
+        plt.title(title_text, fontsize=12)
+        plt.show()
+
+    except Exception as e:
+        print(f"Error during prediction: {e}")
+
+
+# Function to preprocess data
+def preprocess_data(data_dir, categories):
+    """
+    Prepares training and testing datasets from the given directory.
+    Returns features (X) and labels (Y).
+    """
+    data = []
+    for category in categories:
+        path = os.path.join(data_dir, category)
+        class_label = categories.index(category)
+        for img_file in os.listdir(path):
+            try:
+                img_path = os.path.join(path, img_file)
+                img_array = cv2.imread(img_path)
+                img_resized = cv2.resize(img_array, (256, 256))
+                data.append([img_resized, class_label])
+            except Exception as e:
+                print(f"Error loading image: {e}")
+    random.shuffle(data)  # Shuffle for balanced training
+    X, Y = zip(*data)
+    return np.array(X), np.array(Y)
+
+
+# Function to train the model
+def train_model(model, x_train, y_train, x_val, y_val, epochs=10):
+    """
+    Trains the model and logs accuracy/loss at each epoch.
+    """
+    y_train_cat = to_categorical(y_train, 4)
+    y_val_cat = to_categorical(y_val, 4)
+
+    logger = EpochLogger()
+    history = model.fit(x_train, y_train_cat, validation_data=(x_val, y_val_cat),
+                        epochs=epochs, batch_size=32, verbose=1, callbacks=[logger])
+    return history
+
+
+# Main function
+def main():
+    """
+    Main function to predict uploaded images, train the model, and visualize results.
+    """
+    categories = ["Black_rot", "Esca_(Black_Measles)", "Healthy", "Leaf_blight_(Isariopsis_Leaf_Spot)"]
+
+    print("Please select an image to upload for prediction.")
+    image_path = upload_image()
+    if not image_path:
+        print("No image selected. Exiting.")
+        return
+
+    # Predict first using a pretrained model
+    try:
+        model_path = 'leaf_disease_model.h5'
+        model = load_model(model_path)
+        print("\nModel loaded. Generating predictions for the uploaded image...")
+        predict_uploaded_image(model, image_path, categories)
+    except:
+        print("No pretrained model found. Proceeding to train a new model.")
+
+    # Paths for training/testing
+    train_dir = r'C:\Users\harsh\Desktop\GRAPES GREY AVERAGE\Grapes Leaves Dataset (images)\train'
+    test_dir = r'C:\Users\harsh\Desktop\GRAPES GREY AVERAGE\Grapes Leaves Dataset (images)\test'
+
+    print("\nLoading training data...")
+    x_train, y_train = preprocess_data(train_dir, categories)
+    print("Loading testing data...")
+    x_test, y_test = preprocess_data(test_dir, categories)
+
+    # Normalize data
+    x_train, x_test = x_train / 255.0, x_test / 255.0
+
+    print("\nCreating and training a new model...")
+    model = create_model()
+    train_model(model, x_train, y_train, x_test, y_test, epochs=10)
+
+    # Save the model
+    model.save('leaf_disease_model.h5')
+    print("\nModel saved as 'leaf_disease_model.h5'.")
+
+    print("\nGenerating predictions for the uploaded image again...")
+    predict_uploaded_image(model, image_path, categories, top_n=4)
+
+
+if __name__ == "__main__":
+    main()

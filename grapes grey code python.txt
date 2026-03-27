@@ -1,0 +1,138 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+import tensorflow as tf
+from tensorflow.keras import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
+from tensorflow.keras.utils import to_categorical
+from tkinter import Tk, filedialog
+import matplotlib.pyplot as plt
+import os
+import cv2
+import numpy as np
+import random
+
+# Categories for classification
+CATEGORIES = ["Black_rot", "Esca_(Black_Measles)", "Healthy", "Leaf_blight_(Isariopsis_Leaf_Spot)"]
+
+# Function to create CNN model
+def create_cnn_model():
+    model = Sequential([
+        Conv2D(32, (3, 3), activation='relu', input_shape=(256, 256, 1)),  # Adjusted for grayscale input
+        Conv2D(64, (3, 3), activation='relu'),
+        MaxPooling2D((8, 8)),
+        Conv2D(32, (3, 3), activation='relu'),
+        Conv2D(64, (3, 3), activation='relu'),
+        MaxPooling2D((8, 8)),
+        Flatten(),
+        Dense(256, activation='relu'),
+        Dense(len(CATEGORIES), activation='softmax')
+    ])
+    model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
+    return model
+
+# Function to upload an image
+def upload_image():
+    root = Tk()
+    root.withdraw()  # Hide Tkinter GUI
+    file_path = filedialog.askopenfilename(filetypes=[("Image Files", "*.jpg *.jpeg *.png")])
+    if not file_path:
+        print("No image selected.")
+        return None, None
+    img = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)  # Convert to grayscale
+    img_resized = cv2.resize(img, (256, 256)) / 255.0  # Normalize the image
+    img_array = img_resized.reshape(1, 256, 256, 1)  # Adjust to grayscale shape
+    return file_path, img_array, img_resized
+
+# Function to predict class of uploaded image
+def predict_uploaded_image(model, img_array, file_path, gray_image):
+    predictions = model.predict(img_array)[0]
+    predicted_index = np.argmax(predictions)
+    confidence = predictions[predicted_index] * 100
+
+    print(f"\nPredictions for {file_path}:")
+    for i, score in enumerate(predictions):
+        print(f"{CATEGORIES[i]}: {score * 100:.2f}%")
+    print(f"\nPredicted Class: {CATEGORIES[predicted_index]} with Confidence: {confidence:.2f}%")
+
+    # Display the grayscale image and prediction
+    plt.imshow(gray_image, cmap='gray')
+    plt.title(f"Prediction: {CATEGORIES[predicted_index]} ({confidence:.2f}%)")
+    plt.axis('off')
+    plt.show()
+
+# Function to preprocess dataset
+def preprocess_data(data_dir, categories):
+    data = []
+    for category in categories:
+        path = os.path.join(data_dir, category)
+        class_num = categories.index(category)
+        for img_name in os.listdir(path):
+            try:
+                img = cv2.imread(os.path.join(path, img_name), cv2.IMREAD_GRAYSCALE)  # Convert to grayscale
+                img_resized = cv2.resize(img, (256, 256)) / 255.0
+                data.append([img_resized, class_num])
+            except Exception as e:
+                pass
+    random.shuffle(data)
+    x, y = zip(*data)
+    x = np.array(x).reshape(-1, 256, 256, 1)  # Adjust to grayscale shape
+    y = to_categorical(y, len(categories))
+    return x, y
+
+# Train and visualize model
+def train_and_visualize(x_train, y_train, x_test, y_test):
+    model = create_cnn_model()
+    history = model.fit(
+        x_train, y_train,
+        epochs=10, batch_size=32,
+        validation_split=0.15, shuffle=True, verbose=1
+    )
+
+    # Save the model
+    model.save("leaf_disease_model_gray.h5")
+    print("\nModel saved as 'leaf_disease_model_gray.h5'.")
+
+    # Evaluate model on test data
+    test_loss, test_accuracy = model.evaluate(x_test, y_test, verbose=2)
+    print(f"\nTest Accuracy: {test_accuracy * 100:.2f}%")
+
+    # Visualize training process
+    plt.figure(figsize=(12, 5))
+    plt.subplot(1, 2, 1)
+    plt.plot(history.history['accuracy'], label='Train Accuracy')
+    plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+    plt.legend()
+    plt.title('Accuracy Over Epochs')
+
+    plt.subplot(1, 2, 2)
+    plt.plot(history.history['loss'], label='Train Loss')
+    plt.plot(history.history['val_loss'], label='Validation Loss')
+    plt.legend()
+    plt.title('Loss Over Epochs')
+    plt.show()
+
+    return model
+
+# Main Function
+def main():
+    print("Please upload an image for prediction:")
+    file_path, img_array, gray_image = upload_image()
+
+    if img_array is not None:
+        print("\nLoading pre-trained model (if available)...")
+        try:
+            model = tf.keras.models.load_model("leaf_disease_model_gray.h5")
+            print("Model loaded successfully.")
+        except:
+            print("No pre-trained model found. Training a new model...")
+            train_dir = r'C:\Users\harsh\Desktop\GRAPES GREY AVERAGE\Grapes Leaves Dataset (images)\train'
+            test_dir = r'C:\Users\harsh\Desktop\GRAPES GREY AVERAGE\Grapes Leaves Dataset (images)\test'
+            x_train, y_train = preprocess_data(train_dir, CATEGORIES)
+            x_test, y_test = preprocess_data(test_dir, CATEGORIES)
+            model = train_and_visualize(x_train, y_train, x_test, y_test)
+
+        predict_uploaded_image(model, img_array, file_path, gray_image)
+
+if __name__ == "__main__":
+    main()
